@@ -642,6 +642,11 @@ static uint32_t rocksdb_debug_manual_compaction_delay = 0;
 static uint32_t rocksdb_max_manual_compactions = 0;
 static bool rocksdb_rollback_on_timeout = false;
 static bool rocksdb_enable_insert_with_update_caching = true;
+static bool rocksdb_use_aws = false;
+static char *rocksdb_aws_access_key_id = nullptr;
+static char *rocksdb_aws_secret_access_key = nullptr;
+static char *rocksdb_aws_s3_bucket_name = nullptr;
+static char *rocksdb_aws_s3_region = nullptr;
 
 std::atomic<uint64_t> rocksdb_row_lock_deadlocks(0);
 std::atomic<uint64_t> rocksdb_row_lock_wait_timeouts(0);
@@ -2080,6 +2085,37 @@ static MYSQL_SYSVAR_STR(
     "rocksdb_datadir/block_cache_traces/trace_file_name.",
     rocksdb_trace_block_cache_access, nullptr, "");
 
+static MYSQL_SYSVAR_BOOL(
+    use_aws, rocksdb_use_aws, PLUGIN_VAR_NOCMDARG | PLUGIN_VAR_READONLY,
+    "Whether to use aws s3 cloud storage for rocksdb ",
+    nullptr, nullptr, false);
+
+static MYSQL_SYSVAR_STR(
+    aws_access_key_id, rocksdb_aws_access_key_id,
+    PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
+    "Aws access key id for aws s3 cloud storage",
+    nullptr, nullptr, "");
+
+static MYSQL_SYSVAR_STR(
+    aws_secret_access_key, rocksdb_aws_secret_access_key,
+    PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
+    "Aws secret access key for aws s3 cloud storage",
+    nullptr, nullptr, "");
+
+static MYSQL_SYSVAR_STR(
+    aws_s3_bucket_name, rocksdb_aws_s3_bucket_name,
+    PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
+    "S3 bucket name for aws s3 cloud storage",
+    nullptr, nullptr, "");
+
+static MYSQL_SYSVAR_STR(
+    aws_s3_region, rocksdb_aws_s3_region,
+    PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
+    "S3 region name for aws s3 cloud storage",
+    nullptr, nullptr, "");
+
+
+
 static const int ROCKSDB_ASSUMED_KEY_VALUE_DISK_SIZE = 100;
 
 static struct SYS_VAR *rocksdb_system_variables[] = {
@@ -2257,6 +2293,11 @@ static struct SYS_VAR *rocksdb_system_variables[] = {
 
     MYSQL_SYSVAR(enable_insert_with_update_caching),
     MYSQL_SYSVAR(trace_block_cache_access),
+    MYSQL_SYSVAR(use_aws),
+    MYSQL_SYSVAR(aws_access_key_id),
+    MYSQL_SYSVAR(aws_secret_access_key),
+    MYSQL_SYSVAR(aws_s3_bucket_name),
+    MYSQL_SYSVAR(aws_s3_region),
     nullptr};
 
 static rocksdb::WriteOptions rdb_get_rocksdb_write_options(
@@ -4989,37 +5030,51 @@ static int rocksdb_init_func(void *const p) {
   rocksdb_hton->partition_flags = rocksdb_partition_flags;
 
 //------------------------
-  // XXX NewAwsEnv and PrepareOpen before NewSequentialFile(), ListColumnFamilies()
-  // XXX That functions need cloud manifast file
-  rocksdb::CloudEnvOptions cloud_env_options;
-  if (!cloud_env_options.credentials.HasValid().ok()) {
-	  fprintf(stderr, "cloud env credentials not valid\n");
-	  assert(nullptr);
-  }
-  std::string bucket_name = std::string(getenv("AWS_S3_BUCKET_NAME"));
-  cloud_env_options.src_bucket.SetBucketName(bucket_name, "apposha.");
-  cloud_env_options.src_bucket.SetObjectPath("/tmp/myrocks");
-  cloud_env_options.src_bucket.SetRegion("ap-northeast-2");
-  cloud_env_options.dest_bucket.SetBucketName(bucket_name, "apposha.");
-  cloud_env_options.dest_bucket.SetObjectPath("/tmp/myrocks");
-  cloud_env_options.dest_bucket.SetRegion("ap-northeast-2");
+  if(rocksdb_use_aws) {
+    // XXX NewAwsEnv and PrepareOpen before NewSequentialFile(), ListColumnFamilies()
+    // XXX That functions need cloud manifast file
+    rocksdb::CloudEnvOptions cloud_env_options;
 
-  // XXX important for indexing performance
-  //cloud_env_options.keep_local_sst_files = true;
+    std::string access_key = std::string(rocksdb_aws_access_key_id);
+    std::string secret_key = std::string(rocksdb_aws_secret_access_key);
+    std::string bucket_name = std::string(rocksdb_aws_s3_bucket_name);
+    std::string region_name = std::string(rocksdb_aws_s3_region);
 
-  rocksdb::CloudEnv* cenv;
-  rocksdb::Status cenv_status = rocksdb::CloudEnv::NewAwsEnv(rocksdb::Env::Default(), cloud_env_options, nullptr, &cenv);
-  if (!cenv_status.ok()) {
-    fprintf(stderr, "Unable to create cloud env in bucket %s\n", cenv_status.ToString().c_str());
-    assert(nullptr);
-  }
+    if(access_key == "" || secret_key == "" || bucket_name == "" || region_name == "") {
+      LogPluginErrMsg(ERROR_LEVEL, 0,
+                    "must specify rocksdb-aws-access-key-id, rocksdb-aws-secret-access-key, rocksdb-aws-s3-bucket-name");
+      deinit_logging_service_for_plugin(&reg_srv, &log_bi, &log_bs);
+      DBUG_RETURN(HA_EXIT_FAILURE);
+    }
 
-  rocksdb_db_options->env = cenv;
+    cloud_env_options.credentials.InitializeSimple(access_key, secret_key);
+    if (!cloud_env_options.credentials.HasValid().ok()) {
+      LogPluginErrMsg(ERROR_LEVEL, 0,
+                    "aws credentials not valid");
+      deinit_logging_service_for_plugin(&reg_srv, &log_bi, &log_bs);
+      DBUG_RETURN(HA_EXIT_FAILURE);
+    }
+    cloud_env_options.src_bucket.SetBucketName(bucket_name, "apposha.");
+    cloud_env_options.src_bucket.SetObjectPath("/myrocks");
+    cloud_env_options.src_bucket.SetRegion(region_name);
+    cloud_env_options.dest_bucket.SetBucketName(bucket_name, "apposha.");
+    cloud_env_options.dest_bucket.SetObjectPath("/myrocks");
+    cloud_env_options.dest_bucket.SetRegion(region_name);
 
-  cenv_status = rocksdb::DBCloud::PrepareOpen(*rocksdb_db_options, rocksdb_datadir);
-  if(!cenv_status.ok()) {
-	  fprintf(stderr, "PrepareOpen failed\n");
-	  assert(nullptr);
+    rocksdb::CloudEnv* cenv;
+    rocksdb::Status cenv_status = rocksdb::CloudEnv::NewAwsEnv(rocksdb::Env::Default(), cloud_env_options, nullptr, &cenv);
+    if (!cenv_status.ok()) {
+      rdb_log_status_error(cenv_status, "Error creating AwsEnv");
+      DBUG_RETURN(HA_EXIT_FAILURE);
+    }
+
+    rocksdb_db_options->env = cenv;
+
+    cenv_status = rocksdb::DBCloud::PrepareOpen(*rocksdb_db_options, rocksdb_datadir);
+    if(!cenv_status.ok()) {
+      rdb_log_status_error(cenv_status, "Error Preparing open DBCloud");
+      DBUG_RETURN(HA_EXIT_FAILURE);
+    }
   }
 //------------------------
 
@@ -5312,35 +5367,39 @@ static int rocksdb_init_func(void *const p) {
   LogPluginErrMsg(INFORMATION_LEVEL, 0, "Opening TransactionDB...");
 
 // ----------------------
-  /*
-  status = rocksdb::TransactionDB::Open(
-      main_opts, tx_db_options, rocksdb_datadir, cf_descr, &cf_handles, &rdb);
-  */
+  if(rocksdb_use_aws) {
+    // XXX 1. PrepareWrap Before DB Open
+    std::vector<rocksdb::ColumnFamilyDescriptor> column_families_copy = cf_descr;
+    std::vector<size_t> compaction_enabled_cf_indices_;
+    rocksdb::TransactionDB::PrepareWrap(&main_opts, &column_families_copy, &compaction_enabled_cf_indices_);
 
-  // XXX 1. PrepareWrap Before DB Open
-  std::vector<rocksdb::ColumnFamilyDescriptor> column_families_copy = cf_descr;
-  std::vector<size_t> compaction_enabled_cf_indices_;
-  rocksdb::TransactionDB::PrepareWrap(&main_opts, &column_families_copy, &compaction_enabled_cf_indices_);
+    // XXX 2. Open CloudDB
+    rocksdb::DBCloud *cloud_db;
+    status = rocksdb::DBCloud::Open(main_opts, rocksdb_datadir, cf_descr, "", 0, &cf_handles, &cloud_db);
 
-  // XXX 2. Open CloudDB
-  rocksdb::DBCloud *cloud_db;
-  status = rocksdb::DBCloud::Open(main_opts, rocksdb_datadir, cf_descr, "", 0, &cf_handles, &cloud_db);
+    if (!status.ok()) {
+      rdb_log_status_error(status, "Error opening instance");
+      DBUG_RETURN(HA_EXIT_FAILURE);
+    }
+
+    // XXX 3. Wrapping TransactionDB
+    status = rocksdb::TransactionDB::WrapStackableDB(cloud_db, tx_db_options, compaction_enabled_cf_indices_, cf_handles, &rdb);
+    if (!status.ok()) {
+      rdb_log_status_error(status, "Error WrapStackableDB");
+      DBUG_RETURN(HA_EXIT_FAILURE);
+    }
+  } else {
+    status = rocksdb::TransactionDB::Open(
+        main_opts, tx_db_options, rocksdb_datadir, cf_descr, &cf_handles, &rdb);
+
+    if (!status.ok()) {
+      rdb_log_status_error(status, "Error opening instance");
+      DBUG_RETURN(HA_EXIT_FAILURE);
+    }
+  }
 // ----------------------
 
-  if (!status.ok()) {
-    rdb_log_status_error(status, "Error opening instance");
-    DBUG_RETURN(HA_EXIT_FAILURE);
-  }
   cf_manager.init(std::move(cf_options_map), &cf_handles);
-
-// ----------------------
-  // XXX 3. Wrapping TransactionDB
-  status = rocksdb::TransactionDB::WrapStackableDB(cloud_db, tx_db_options, compaction_enabled_cf_indices_, cf_handles, &rdb);
-  if (!status.ok()) {
-	  fprintf(stderr, "WrapStackableDB failed\n");
-	  assert(nullptr);
-  }
-// ----------------------
 
   LogPluginErrMsg(INFORMATION_LEVEL, 0, "Initializing data dictionary...");
 
