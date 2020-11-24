@@ -142,7 +142,7 @@ IF(BUILD_BUNDLED_ZSTD)
 ENDIF()
 
 ADD_DEFINITIONS(-DROCKSDB_PLATFORM_POSIX -DROCKSDB_LIB_IO_POSIX -DZLIB -DLZ4
-  -DZSTD -DROCKSDB_SUPPORT_THREAD_LOCAL)
+  -DZSTD -DROCKSDB_SUPPORT_THREAD_LOCAL -DUSE_AWS)
 
 IF(WITH_FB_TSAN)
   SET(PIC_EXT "_pic")
@@ -176,7 +176,9 @@ SET(ROCKSDB_SOURCES
   ${ROCKSDB_LIB_SOURCES}
 )
 
-SET(rocksdb_static_libs ${rocksdb_static_libs} ${ZLIB_LIBRARY} ${ZSTD_LIBRARY} ${LZ4_LIBRARY} "-lrt" "-ldl")
+link_directories(/usr/local/lib)
+
+SET(rocksdb_static_libs ${rocksdb_static_libs} ${ZLIB_LIBRARY} ${ZSTD_LIBRARY} ${LZ4_LIBRARY} "-lrt" "-ldl" "-laws-cpp-sdk-s3" "-laws-cpp-sdk-kinesis" "-laws-cpp-sdk-core" "-laws-cpp-sdk-transfer")
 
 MYSQL_ADD_PLUGIN(rocksdb ${ROCKSDB_SOURCES} STORAGE_ENGINE DEFAULT MODULE_ONLY
   LINK_LIBRARIES ${rocksdb_static_libs}
