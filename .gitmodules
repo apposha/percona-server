@@ -10,3 +10,7 @@
 [submodule "extra/coredumper"]
 	path = extra/coredumper
 	url = https://github.com/Percona-Lab/coredumper.git
+[submodule "extra/aws-sdk-cpp"]
+	path = extra/aws-sdk-cpp
+	url = https://github.com/aws/aws-sdk-cpp.git
+

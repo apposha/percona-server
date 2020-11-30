@@ -176,9 +176,14 @@ SET(ROCKSDB_SOURCES
   ${ROCKSDB_LIB_SOURCES}
 )
 
-link_directories(/usr/local/lib)
+SET(rocksdb_static_libs ${rocksdb_static_libs} ${ZLIB_LIBRARY} ${ZSTD_LIBRARY} ${LZ4_LIBRARY} "-lrt" "-ldl" "aws-cpp-sdk-s3" "aws-cpp-sdk-kinesis" "aws-cpp-sdk-core" "aws-cpp-sdk-transfer")
 
-SET(rocksdb_static_libs ${rocksdb_static_libs} ${ZLIB_LIBRARY} ${ZSTD_LIBRARY} ${LZ4_LIBRARY} "-lrt" "-ldl" "-laws-cpp-sdk-s3" "-laws-cpp-sdk-kinesis" "-laws-cpp-sdk-core" "-laws-cpp-sdk-transfer")
+INCLUDE_DIRECTORIES(
+  ${CMAKE_SOURCE_DIR}/extra/aws-sdk-cpp/aws-cpp-sdk-core/include
+  ${CMAKE_SOURCE_DIR}/extra/aws-sdk-cpp/aws-cpp-sdk-s3/include
+  ${CMAKE_SOURCE_DIR}/extra/aws-sdk-cpp/aws-cpp-sdk-kinesis/include
+  ${CMAKE_SOURCE_DIR}/extra/aws-sdk-cpp/aws-cpp-sdk-transfer/include
+)
 
 MYSQL_ADD_PLUGIN(rocksdb ${ROCKSDB_SOURCES} STORAGE_ENGINE DEFAULT MODULE_ONLY
   LINK_LIBRARIES ${rocksdb_static_libs}

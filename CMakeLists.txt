@@ -1395,6 +1395,9 @@ MYSQL_CHECK_RAPIDJSON()
 # Add coredumper
 MYSQL_CHECK_COREDUMPER()
 
+SET(BUILD_ONLY "core;s3;kinesis;transfer" CACHE STRING "A semi-colon delimited list of the projects to build")
+ADD_SUBDIRECTORY(extra/aws-sdk-cpp)
+
 MACRO(MY_INCLUDE_SYSTEM_DIRECTORIES LIBRARY)
   IF(${WITH_${LIBRARY}} STREQUAL "bundled")
     SET(BEFORE_OR_AFTER "BEFORE")

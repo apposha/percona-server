@@ -22,16 +22,18 @@
 # NOTE: "vendor" is used in upgrade/downgrade check, so you can't
 # change these, has to be exactly as is.
 
+%undefine _unpackaged_files_terminate_build
+%undefine _missing_doc_files_terminate_build
 %undefine _missing_build_ids_terminate_build
 %global mysql_vendor Oracle and/or its affiliates
 %global percona_server_vendor Percona, Inc
 %global mysqldatadir /var/lib/mysql
 
-%global mysql_version @@MYSQL_VERSION@@
-%global percona_server_version @@PERCONA_VERSION@@
-%global revision @@REVISION@@
+%global mysql_version 8.0.21
+%global percona_server_version 12apposha
+%global revision 1c365bdcfa1
 %global tokudb_backup_version %{mysql_version}-%{percona_server_version}
-%global rpm_release @@RPM_RELEASE@@
+%global rpm_release 1
 
 %global release %{percona_server_version}.%{rpm_release}%{?dist}
 
@@ -142,7 +144,7 @@ URL:            http://www.percona.com/
 Packager:       Percona MySQL Development Team <mysqldev@percona.com>
 Vendor:         %{percona_server_vendor}
 Source5:        mysql_config.sh
-Source10:       http://jenkins.percona.com/downloads/boost/@@BOOST_PACKAGE_NAME@@.tar.gz
+Source10:       http://jenkins.percona.com/downloads/boost/boost_1_72_0.tar.gz
 Source90:       filter-provides.sh
 Source91:       filter-requires.sh
 Patch0:         mysql-5.7-sharedlib-rename.patch
@@ -410,9 +412,39 @@ Group:          Applications/Databases
 Requires:       percona-server-server = %{version}-%{release}
 Requires:       percona-server-shared = %{version}-%{release}
 Requires:       percona-server-client = %{version}-%{release}
+Requires:       percona-server-aws-cpp-sdk
 
 %description -n percona-server-rocksdb
 This package contains the RocksDB plugin for Percona Server %{version}-%{release}
+
+%package -n percona-server-aws-cpp-sdk-thirdparty
+Summary:        Percona Server - Aws SDK cpp package thirdparty
+Group:          Applications/Databases
+Provides:       percona-server-aws-cpp-sdk-thirdparty
+Provides:       libaws-c-common.so()(64bit)
+Provides:       libaws-c-common.so.0unstable()(64bit)
+Provides:       libaws-c-common.so.1.0.0()(64bit)
+Provides:       libaws-c-event-stream.so()(64bit)
+Provides:       libaws-c-event-stream.so.0unstable()(64bit)
+Provides:       libaws-c-event-stream.so.1.0.0()(64bit)
+Provides:       libaws-checksums.so()(64bit)
+
+%description -n percona-server-aws-cpp-sdk-thirdparty
+This package contains the aws-cpp-sdk shared library for rocksdb cloud
+
+%package -n percona-server-aws-cpp-sdk
+Summary:        Percona Server - Aws SDK cpp thirdparty package
+Group:          Applications/Databases
+Requires:       percona-server-aws-cpp-sdk-thirdparty
+Provides:       percona-server-aws-cpp-sdk
+Provides:       libaws-cpp-sdk-core.so
+Provides:       libaws-cpp-sdk-s3.so
+Provides:       libaws-cpp-sdk-kinesis.so
+Provides:       libaws-cpp-sdk-transfer.so
+
+%description -n percona-server-aws-cpp-sdk
+This package contains the aws-cpp-sdk shared library for rocksdb cloud
+
 %endif
 
 %package  -n   percona-mysql-router
@@ -603,6 +635,7 @@ install -d %{buildroot}%{_sysconfdir}/my.cnf.d
 # Add libdir to linker
 install -d -m 0755 %{buildroot}%{_sysconfdir}/ld.so.conf.d
 echo "%{_libdir}/mysql" > %{buildroot}%{_sysconfdir}/ld.so.conf.d/mysql-%{_arch}.conf
+echo "%{_libdir}/mysql/lib64" >> %{buildroot}%{_sysconfdir}/ld.so.conf.d/mysql-%{_arch}.conf
 
 # multiarch support
 %ifarch %{multiarchs}
@@ -807,6 +840,13 @@ if [ $1 -eq 1 ] ; then
   echo -e " * Run the following script to enable the RocksDB storage engine in Percona Server:\n"
   echo -e "\tps-admin --enable-rocksdb -u <mysql_admin_user> -p[mysql_admin_pass] [-S <socket>] [-h <host> -P <port>]\n"
 fi
+
+%post -n percona-server-aws-cpp-sdk-thirdparty
+ln -s %{_libdir}/libaws-c-common.so.1.0.0 %{_libdir}/libaws-c-common.so.0unstable
+ln -s %{_libdir}/libaws-c-common.so.0unstable %{_libdir}/libaws-c-common.so
+ln -s %{_libdir}/libaws-c-common.so.1.0.0 %{_libdir}/libaws-c-event-stream.so.0unstable
+ln -s %{_libdir}/libaws-c-event-stream.so.0unstable %{_libdir}/libaws-c-event-stream.so
+
 %endif
 
 %pre -n percona-mysql-router
@@ -1122,6 +1162,7 @@ fi
 %attr(644, root, root) %{_sysconfdir}/ld.so.conf.d/mysql-%{_arch}.conf
 %{_libdir}/mysql/lib%{shared_lib_pri_name}.so.21*
 
+
 %if 0%{?compatlib}
 %files -n percona-server-shared-compat
 %defattr(-, root, root, -)
@@ -1306,6 +1347,81 @@ fi
 %attr(755, root, root) %{_bindir}/ldb
 %attr(755, root, root) %{_bindir}/mysql_ldb
 %attr(755, root, root) %{_bindir}/sst_dump
+
+%files -n percona-server-aws-cpp-sdk-thirdparty
+%{_libdir}/aws-c-common/cmake/aws-c-common-config.cmake
+%{_libdir}/aws-c-common/cmake/shared/aws-c-common-targets-relwithdebinfo.cmake
+%{_libdir}/aws-c-common/cmake/shared/aws-c-common-targets.cmake
+%{_libdir}/aws-c-event-stream/cmake/aws-c-event-stream-config.cmake
+%{_libdir}/aws-c-event-stream/cmake/shared/aws-c-event-stream-targets-relwithdebinfo.cmake
+%{_libdir}/aws-c-event-stream/cmake/shared/aws-c-event-stream-targets.cmake
+%{_libdir}/aws-checksums/cmake/aws-checksums-config.cmake
+%{_libdir}/aws-checksums/cmake/shared/aws-checksums-targets-relwithdebinfo.cmake
+%{_libdir}/aws-checksums/cmake/shared/aws-checksums-targets.cmake
+%{_libdir}/cmake/AWSSDK/AWSSDKConfig.cmake
+%{_libdir}/cmake/AWSSDK/AWSSDKConfigVersion.cmake
+%{_libdir}/cmake/AWSSDK/build_external.cmake
+%{_libdir}/cmake/AWSSDK/compiler_settings.cmake
+%{_libdir}/cmake/AWSSDK/dependencies.cmake
+%{_libdir}/cmake/AWSSDK/external_dependencies.cmake
+%{_libdir}/cmake/AWSSDK/initialize_project_version.cmake
+%{_libdir}/cmake/AWSSDK/make_uninstall.cmake
+%{_libdir}/cmake/AWSSDK/platform/android.cmake
+%{_libdir}/cmake/AWSSDK/platform/apple.cmake
+%{_libdir}/cmake/AWSSDK/platform/custom.cmake
+%{_libdir}/cmake/AWSSDK/platform/linux.cmake
+%{_libdir}/cmake/AWSSDK/platform/unix.cmake
+%{_libdir}/cmake/AWSSDK/platform/windows.cmake
+%{_libdir}/cmake/AWSSDK/platformDeps.cmake
+%{_libdir}/cmake/AWSSDK/resolve_platform.cmake
+%{_libdir}/cmake/AWSSDK/sdks.cmake
+%{_libdir}/cmake/AWSSDK/sdksCommon.cmake
+%{_libdir}/cmake/AWSSDK/setup_cmake_find_module.cmake
+%{_libdir}/cmake/AWSSDK/utilities.cmake
+%{_libdir}/cmake/AwsCFlags.cmake
+%{_libdir}/cmake/AwsCheckHeaders.cmake
+%{_libdir}/cmake/AwsFindPackage.cmake
+%{_libdir}/cmake/AwsLibFuzzer.cmake
+%{_libdir}/cmake/AwsSIMD.cmake
+%{_libdir}/cmake/AwsSanitizers.cmake
+%{_libdir}/cmake/AwsSharedLibSetup.cmake
+%{_libdir}/cmake/AwsTestHarness.cmake
+%{_libdir}/libaws-c-common.so.1.0.0
+%{_libdir}/libaws-c-event-stream.so.1.0.0
+%{_libdir}/libaws-checksums.so
+
+%files -n percona-server-aws-cpp-sdk
+%{_libdir}/cmake/aws-cpp-sdk-core/aws-cpp-sdk-core-config-version.cmake
+%{_libdir}/cmake/aws-cpp-sdk-core/aws-cpp-sdk-core-config.cmake
+%{_libdir}/cmake/aws-cpp-sdk-core/aws-cpp-sdk-core-targets-relwithdebinfo.cmake
+%{_libdir}/cmake/aws-cpp-sdk-core/aws-cpp-sdk-core-targets.cmake
+%{_libdir}/cmake/aws-cpp-sdk-kinesis/aws-cpp-sdk-kinesis-config-version.cmake
+%{_libdir}/cmake/aws-cpp-sdk-kinesis/aws-cpp-sdk-kinesis-config.cmake
+%{_libdir}/cmake/aws-cpp-sdk-kinesis/aws-cpp-sdk-kinesis-targets-relwithdebinfo.cmake
+%{_libdir}/cmake/aws-cpp-sdk-kinesis/aws-cpp-sdk-kinesis-targets.cmake
+%{_libdir}/cmake/aws-cpp-sdk-s3/aws-cpp-sdk-s3-config-version.cmake
+%{_libdir}/cmake/aws-cpp-sdk-s3/aws-cpp-sdk-s3-config.cmake
+%{_libdir}/cmake/aws-cpp-sdk-s3/aws-cpp-sdk-s3-targets-relwithdebinfo.cmake
+%{_libdir}/cmake/aws-cpp-sdk-s3/aws-cpp-sdk-s3-targets.cmake
+%{_libdir}/cmake/aws-cpp-sdk-transfer/aws-cpp-sdk-transfer-config-version.cmake
+%{_libdir}/cmake/aws-cpp-sdk-transfer/aws-cpp-sdk-transfer-config.cmake
+%{_libdir}/cmake/aws-cpp-sdk-transfer/aws-cpp-sdk-transfer-targets-relwithdebinfo.cmake
+%{_libdir}/cmake/aws-cpp-sdk-transfer/aws-cpp-sdk-transfer-targets.cmake
+%{_libdir}/cmake/testing-resources/testing-resources-config-version.cmake
+%{_libdir}/cmake/testing-resources/testing-resources-config.cmake
+%{_libdir}/cmake/testing-resources/testing-resources-targets-relwithdebinfo.cmake
+%{_libdir}/cmake/testing-resources/testing-resources-targets.cmake
+%{_libdir}/libaws-cpp-sdk-core.so
+%{_libdir}/libaws-cpp-sdk-kinesis.so
+%{_libdir}/libaws-cpp-sdk-s3.so
+%{_libdir}/libaws-cpp-sdk-transfer.so
+%{_libdir}/libtesting-resources.so
+%{_libdir}/pkgconfig/aws-cpp-sdk-core.pc
+%{_libdir}/pkgconfig/aws-cpp-sdk-kinesis.pc
+%{_libdir}/pkgconfig/aws-cpp-sdk-s3.pc
+%{_libdir}/pkgconfig/aws-cpp-sdk-transfer.pc
+%{_libdir}/pkgconfig/testing-resources.pc
+
 %endif
 
 %files -n percona-mysql-router
