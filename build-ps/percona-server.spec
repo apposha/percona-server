@@ -31,7 +31,7 @@
 
 %global mysql_version 8.0.21
 %global percona_server_version 12apposha
-%global revision 1c365bdcfa1
+%global revision 8ce559671c4
 %global tokudb_backup_version %{mysql_version}-%{percona_server_version}
 %global rpm_release 1
 
@@ -413,6 +413,7 @@ Requires:       percona-server-server = %{version}-%{release}
 Requires:       percona-server-shared = %{version}-%{release}
 Requires:       percona-server-client = %{version}-%{release}
 Requires:       percona-server-aws-cpp-sdk
+Requires:       librdkafka
 
 %description -n percona-server-rocksdb
 This package contains the RocksDB plugin for Percona Server %{version}-%{release}

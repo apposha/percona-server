@@ -647,6 +647,8 @@ static char *rocksdb_aws_access_key_id = nullptr;
 static char *rocksdb_aws_secret_access_key = nullptr;
 static char *rocksdb_aws_s3_bucket_name = nullptr;
 static char *rocksdb_aws_s3_region = nullptr;
+static bool rocksdb_use_kafka = false;
+static char *rocksdb_kafka_brokers_list = nullptr;
 
 std::atomic<uint64_t> rocksdb_row_lock_deadlocks(0);
 std::atomic<uint64_t> rocksdb_row_lock_wait_timeouts(0);
@@ -2114,6 +2116,16 @@ static MYSQL_SYSVAR_STR(
     "S3 region name for aws s3 cloud storage",
     nullptr, nullptr, "");
 
+static MYSQL_SYSVAR_BOOL(
+    use_kafka, rocksdb_use_kafka, PLUGIN_VAR_NOCMDARG | PLUGIN_VAR_READONLY,
+    "Whether to use kafka for rocksdb write ahead log",
+    nullptr, nullptr, false);
+
+static MYSQL_SYSVAR_STR(
+    kafka_brokers_list, rocksdb_kafka_brokers_list,
+    PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
+    "Kafka Broker Servers List -> ip1:port1,ip2:port2,...",
+    nullptr, nullptr, "");
 
 
 static const int ROCKSDB_ASSUMED_KEY_VALUE_DISK_SIZE = 100;
@@ -2298,6 +2310,8 @@ static struct SYS_VAR *rocksdb_system_variables[] = {
     MYSQL_SYSVAR(aws_secret_access_key),
     MYSQL_SYSVAR(aws_s3_bucket_name),
     MYSQL_SYSVAR(aws_s3_region),
+    MYSQL_SYSVAR(use_kafka),
+    MYSQL_SYSVAR(kafka_brokers_list),
     nullptr};
 
 static rocksdb::WriteOptions rdb_get_rocksdb_write_options(
@@ -5060,6 +5074,19 @@ static int rocksdb_init_func(void *const p) {
     cloud_env_options.dest_bucket.SetBucketName(bucket_name, "apposha.");
     cloud_env_options.dest_bucket.SetObjectPath("/myrocks");
     cloud_env_options.dest_bucket.SetRegion(region_name);
+
+    if(rocksdb_use_kafka) {
+      std::string brokers_list = std::string(rocksdb_kafka_brokers_list);
+      if(brokers_list == "") {
+        LogPluginErrMsg(ERROR_LEVEL, 0,
+                    "must specify rocksdb_kafka_brokers_list for using kafka log system");
+        deinit_logging_service_for_plugin(&reg_srv, &log_bi, &log_bs);
+        DBUG_RETURN(HA_EXIT_FAILURE);
+      }
+      cloud_env_options.keep_local_log_files = false;
+      cloud_env_options.log_type = rocksdb::LogType::kLogKafka;
+      cloud_env_options.kafka_log_options.client_config_params["metadata.broker.list"] = brokers_list;
+    }
 
     rocksdb::CloudEnv* cenv;
     rocksdb::Status cenv_status = rocksdb::CloudEnv::NewAwsEnv(rocksdb::Env::Default(), cloud_env_options, nullptr, &cenv);

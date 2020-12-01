@@ -142,7 +142,7 @@ IF(BUILD_BUNDLED_ZSTD)
 ENDIF()
 
 ADD_DEFINITIONS(-DROCKSDB_PLATFORM_POSIX -DROCKSDB_LIB_IO_POSIX -DZLIB -DLZ4
-  -DZSTD -DROCKSDB_SUPPORT_THREAD_LOCAL -DUSE_AWS)
+  -DZSTD -DROCKSDB_SUPPORT_THREAD_LOCAL -DUSE_AWS -DUSE_KAFKA)
 
 IF(WITH_FB_TSAN)
   SET(PIC_EXT "_pic")
@@ -176,7 +176,7 @@ SET(ROCKSDB_SOURCES
   ${ROCKSDB_LIB_SOURCES}
 )
 
-SET(rocksdb_static_libs ${rocksdb_static_libs} ${ZLIB_LIBRARY} ${ZSTD_LIBRARY} ${LZ4_LIBRARY} "-lrt" "-ldl" "aws-cpp-sdk-s3" "aws-cpp-sdk-kinesis" "aws-cpp-sdk-core" "aws-cpp-sdk-transfer")
+SET(rocksdb_static_libs ${rocksdb_static_libs} ${ZLIB_LIBRARY} ${ZSTD_LIBRARY} ${LZ4_LIBRARY} "-lrt" "-ldl" "aws-cpp-sdk-s3" "aws-cpp-sdk-kinesis" "aws-cpp-sdk-core" "aws-cpp-sdk-transfer" "-lrdkafka++")
 
 INCLUDE_DIRECTORIES(
   ${CMAKE_SOURCE_DIR}/extra/aws-sdk-cpp/aws-cpp-sdk-core/include
