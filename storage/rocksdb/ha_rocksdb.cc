@@ -647,8 +647,10 @@ static char *rocksdb_aws_access_key_id = nullptr;
 static char *rocksdb_aws_secret_access_key = nullptr;
 static char *rocksdb_aws_s3_bucket_name = nullptr;
 static char *rocksdb_aws_s3_region = nullptr;
+static bool rocksdb_keep_local_sst_files = false;
 static bool rocksdb_use_kafka = false;
 static char *rocksdb_kafka_brokers_list = nullptr;
+static uint32_t rocksdb_kafka_max_message_size_mb = 2;
 
 std::atomic<uint64_t> rocksdb_row_lock_deadlocks(0);
 std::atomic<uint64_t> rocksdb_row_lock_wait_timeouts(0);
@@ -2117,6 +2119,11 @@ static MYSQL_SYSVAR_STR(
     nullptr, nullptr, "");
 
 static MYSQL_SYSVAR_BOOL(
+    keep_local_sst_files, rocksdb_keep_local_sst_files, PLUGIN_VAR_NOCMDARG | PLUGIN_VAR_READONLY,
+    "CloudEnv option keep_local_sst_files",
+    nullptr, nullptr, false);
+
+static MYSQL_SYSVAR_BOOL(
     use_kafka, rocksdb_use_kafka, PLUGIN_VAR_NOCMDARG | PLUGIN_VAR_READONLY,
     "Whether to use kafka for rocksdb write ahead log",
     nullptr, nullptr, false);
@@ -2126,6 +2133,13 @@ static MYSQL_SYSVAR_STR(
     PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
     "Kafka Broker Servers List -> ip1:port1,ip2:port2,...",
     nullptr, nullptr, "");
+
+static MYSQL_SYSVAR_UINT(
+    kafka_max_message_size_mb, rocksdb_kafka_max_message_size_mb,
+    PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
+    "Kafka config max.message.size",
+    nullptr, nullptr, rocksdb_kafka_max_message_size_mb,
+    0, 1024, 0);
 
 
 static const int ROCKSDB_ASSUMED_KEY_VALUE_DISK_SIZE = 100;
@@ -2310,8 +2324,10 @@ static struct SYS_VAR *rocksdb_system_variables[] = {
     MYSQL_SYSVAR(aws_secret_access_key),
     MYSQL_SYSVAR(aws_s3_bucket_name),
     MYSQL_SYSVAR(aws_s3_region),
+    MYSQL_SYSVAR(keep_local_sst_files),
     MYSQL_SYSVAR(use_kafka),
     MYSQL_SYSVAR(kafka_brokers_list),
+    MYSQL_SYSVAR(kafka_max_message_size_mb),
     nullptr};
 
 static rocksdb::WriteOptions rdb_get_rocksdb_write_options(
@@ -5075,6 +5091,8 @@ static int rocksdb_init_func(void *const p) {
     cloud_env_options.dest_bucket.SetObjectPath("/myrocks");
     cloud_env_options.dest_bucket.SetRegion(region_name);
 
+    cloud_env_options.keep_local_sst_files = rocksdb_keep_local_sst_files;
+
     if(rocksdb_use_kafka) {
       std::string brokers_list = std::string(rocksdb_kafka_brokers_list);
       if(brokers_list == "") {
@@ -5083,9 +5101,11 @@ static int rocksdb_init_func(void *const p) {
         deinit_logging_service_for_plugin(&reg_srv, &log_bi, &log_bs);
         DBUG_RETURN(HA_EXIT_FAILURE);
       }
+      uint32_t max_bytes = rocksdb_kafka_max_message_size_mb * 1024 * 1024;
       cloud_env_options.keep_local_log_files = false;
       cloud_env_options.log_type = rocksdb::LogType::kLogKafka;
       cloud_env_options.kafka_log_options.client_config_params["metadata.broker.list"] = brokers_list;
+      cloud_env_options.kafka_log_options.client_config_params["message.max.bytes"] = std::to_string(max_bytes);
     }
 
     rocksdb::CloudEnv* cenv;
