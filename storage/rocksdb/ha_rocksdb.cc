@@ -646,6 +646,7 @@ static bool rocksdb_use_aws = false;
 static char *rocksdb_aws_access_key_id = nullptr;
 static char *rocksdb_aws_secret_access_key = nullptr;
 static char *rocksdb_aws_s3_bucket_name = nullptr;
+static char *rocksdb_aws_s3_prefix_name = nullptr;
 static char *rocksdb_aws_s3_region = nullptr;
 static bool rocksdb_keep_local_sst_files = false;
 static bool rocksdb_use_kafka = false;
@@ -2113,6 +2114,12 @@ static MYSQL_SYSVAR_STR(
     nullptr, nullptr, "");
 
 static MYSQL_SYSVAR_STR(
+    aws_s3_prefix_name, rocksdb_aws_s3_prefix_name,
+    PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
+    "S3 bucket prefix name for aws s3 cloud storage",
+    nullptr, nullptr, "");
+
+static MYSQL_SYSVAR_STR(
     aws_s3_region, rocksdb_aws_s3_region,
     PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
     "S3 region name for aws s3 cloud storage",
@@ -2323,6 +2330,7 @@ static struct SYS_VAR *rocksdb_system_variables[] = {
     MYSQL_SYSVAR(aws_access_key_id),
     MYSQL_SYSVAR(aws_secret_access_key),
     MYSQL_SYSVAR(aws_s3_bucket_name),
+    MYSQL_SYSVAR(aws_s3_prefix_name),
     MYSQL_SYSVAR(aws_s3_region),
     MYSQL_SYSVAR(keep_local_sst_files),
     MYSQL_SYSVAR(use_kafka),
@@ -5068,14 +5076,18 @@ static int rocksdb_init_func(void *const p) {
     std::string access_key = std::string(rocksdb_aws_access_key_id);
     std::string secret_key = std::string(rocksdb_aws_secret_access_key);
     std::string bucket_name = std::string(rocksdb_aws_s3_bucket_name);
+    std::string object_name = std::string(rocksdb_aws_s3_prefix_name);
     std::string region_name = std::string(rocksdb_aws_s3_region);
 
-    if(access_key == "" || secret_key == "" || bucket_name == "" || region_name == "") {
+    if(access_key == "" || secret_key == "" || bucket_name == "" || object_name == "") {
       LogPluginErrMsg(ERROR_LEVEL, 0,
-                    "must specify rocksdb-aws-access-key-id, rocksdb-aws-secret-access-key, rocksdb-aws-s3-bucket-name");
+                    "must specify rocksdb-aws-access-key-id, rocksdb-aws-secret-access-key, rocksdb-aws-s3-bucket-name, rocksdb-aws-s3-prefix-name");
       deinit_logging_service_for_plugin(&reg_srv, &log_bi, &log_bs);
       DBUG_RETURN(HA_EXIT_FAILURE);
     }
+
+    if(region_name == "")
+      region_name = "ap-northeast-2";
 
     cloud_env_options.credentials.InitializeSimple(access_key, secret_key);
     if (!cloud_env_options.credentials.HasValid().ok()) {
@@ -5085,10 +5097,10 @@ static int rocksdb_init_func(void *const p) {
       DBUG_RETURN(HA_EXIT_FAILURE);
     }
     cloud_env_options.src_bucket.SetBucketName(bucket_name, "apposha.");
-    cloud_env_options.src_bucket.SetObjectPath("/myrocks");
+    cloud_env_options.src_bucket.SetObjectPath(object_name);
     cloud_env_options.src_bucket.SetRegion(region_name);
     cloud_env_options.dest_bucket.SetBucketName(bucket_name, "apposha.");
-    cloud_env_options.dest_bucket.SetObjectPath("/myrocks");
+    cloud_env_options.dest_bucket.SetObjectPath(object_name);
     cloud_env_options.dest_bucket.SetRegion(region_name);
 
     cloud_env_options.keep_local_sst_files = rocksdb_keep_local_sst_files;
