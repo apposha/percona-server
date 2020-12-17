@@ -1426,6 +1426,13 @@ static MYSQL_SYSVAR_ULONG(keep_log_file_num,
                           nullptr, rocksdb_db_options->keep_log_file_num,
                           /* min */ 0L, /* max */ LONG_MAX, 0);
 
+static MYSQL_SYSVAR_ULONG(recycle_log_file_num,
+                          rocksdb_db_options->recycle_log_file_num,
+                          PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
+                          "DBOptions::recycle_log_file_num for RocksDB", nullptr,
+                          nullptr, rocksdb_db_options->recycle_log_file_num,
+                          /* min */ 0L, /* max */ LONG_MAX, 0);
+
 static MYSQL_SYSVAR_ULONG(max_manifest_file_size,
                           rocksdb_db_options->max_manifest_file_size,
                           PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
@@ -2208,6 +2215,7 @@ static struct SYS_VAR *rocksdb_system_variables[] = {
     MYSQL_SYSVAR(max_subcompactions),
     MYSQL_SYSVAR(log_file_time_to_roll),
     MYSQL_SYSVAR(keep_log_file_num),
+    MYSQL_SYSVAR(recycle_log_file_num),
     MYSQL_SYSVAR(max_manifest_file_size),
     MYSQL_SYSVAR(table_cache_numshardbits),
     MYSQL_SYSVAR(wal_ttl_seconds),
